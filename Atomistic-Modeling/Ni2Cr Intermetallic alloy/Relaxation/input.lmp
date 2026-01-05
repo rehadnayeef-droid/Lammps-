@@ -1,0 +1,41 @@
+# ------------------------ INITIALIZATION ----------------------------
+units 		metal
+dimension	3
+boundary	p   p	p
+atom_style	atomic
+
+# ----------------------- ATOM DEFINITION ----------------------------
+read_data        alloy.lmp 
+
+
+# ------------------------ FORCE FIELDS ------------------------------
+
+pair_style   meam
+pair_coeff	 * * library.meam Ni Cr NiCr.meam Ni Cr
+
+velocity       all      create 300 4928459 mom yes rot yes dist gaussian units box
+
+# ------------------------- SETTINGS ---------------------------------
+compute    1 all stress/atom NULL
+compute    2 all reduce sum c_1[1] c_1[2] c_1[3]
+compute peratom all pe/atom 
+######################################
+# EQUILIBRATION
+reset_timestep	0
+#neighbor            0.2 bin
+#neigh_modify        every 2 delay 10 check yes page 100000
+
+timestep 0.001
+velocity all create 300 5789877 mom yes rot no
+reset_timestep	0
+fix 1 all npt temp 300 300 1 iso 0 0 1 drag 1 
+
+# Set thermo output
+thermo 100
+thermo_style custom step press temp etotal vol
+
+dump 1 all custom 50000 cord.txt type x y z
+
+# Run for at least 10 picosecond (assuming 1 fs timestep)
+run 100000
+unfix 1
