@@ -3,85 +3,81 @@
 # Advanced Indentation Simulation with Multiple Control Methods
 # Indentation was employ at y axis 
 clear
-
-# ---------- Setup Variables ---------------------
-variable etol equal 1.0e-25
-variable ftol equal 1.0e-25
-variable maxiter equal 1000
-variable maxeval equal 10000 
-
+clear
 # ---------------- Initialization ----------------
 units           metal
 dimension       3
 boundary        p s p
 atom_style      atomic
+neighbor 2.0 bin
+neigh_modify delay 0 every 1 check yes
 
 # ---------------- Structure Input ----------------
 # Read pre-built alloy structure
 read_data       alloy.lmp
 
-# ---------------- Groups Definition ----------------
-region 1 block INF INF 88 INF INF INF units box
-region 2 block INF INF INF 1 INF INF units box
-region	3 block  INF INF INF 10 INF INF   units box
-group	lower region 3 
-group top region 1
-group bottom region 2
-group inner subtract all bottom top
+minimize 1.0e-6 1.0e-6 1000 10000
 
-#delete_atoms group step
-delete_atoms group top
-delete_atoms group bottom
+# ---------------- Groups Definition ----------------
+region	1 block  INF INF INF 10 INF INF units box
+group	lower region 1
+region 2 block INF INF 10 20 INF INF units box
+group thermo region 2
+group mobile subtract all lower thermo
+
+
 # ---------------- Potential (MEAM for Al-Cu-Mg) ----------------
 pair_style      meam
 pair_coeff      * * library.meam Al Si Mg Cu Fe alloy.meam Al Mg Cu
 
-neighbor 2.0 bin
-neigh_modify delay 10 check yes
-
 # ---------------- Computes ----------------
-compute new inner temp
-compute csym all centro/atom fcc
-compute eng all pe/atom 
+compute	        new all temp
+compute         peratom all pe/atom
+compute         csym all centro/atom fcc
+compute         disloc all displace/atom 
 
-# ---------- Run Minimization ----------------------------
-reset_timestep 0
-thermo 100
-min_style cg
-minimize ${etol} ${ftol} ${maxiter} ${maxeval}
+fix		1 lower setforce 0.0 0.0 0.0
+fix     2 thermo langevin 10.0 10.0 0.01 12345
+fix     3 mobile nve
 
-# ---------- totally fix all boundaries ---------------------
-fix		7 lower setforce 0.0 0.0 0.0
-velocity lower set 0 0 0 
+# ---------------- Equilibration ----------------
 
-
-# ---------- initial velocities ---------------------------
-reset_timestep 0
+reset_timestep	0
 timestep        0.001
-velocity inner  create 10.00 4882748 temp new
-fix            4 all nvt temp 10.0 10.0 0.01 drag 1.0
+velocity all create 10 12345 mom yes rot no 
+fix     4 all nvt temp 10.0 10.0 0.01 drag 1.0
+#fix 4 all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+#fix		        8 all temp/rescale 100 10 10 1 1
 
-## ---------- relaxation --------------------------------
 thermo          100
-thermo_style    custom step temp
-thermo_modify temp new
+thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
 run             5000
+unfix 4
 
-# ---------- indentation -------------------------------------------
+# ---------- indentation (Loading) -------------------------------------------
+reset_timestep	0
+timestep        0.001
 variable xmid equal lx/2
 variable zmid equal lz/2
-variable y equal "110.1-0.1*step*dt"
-fix 5 all indent 100.0 sphere ${xmid} v_y ${zmid} 20 units box
-variable displacement equal "(110.1 - v_y)"
 
-# ---------- Run with indenter ------------------------------------------
-reset_timestep	0
-timestep 0.001
-thermo 100
-thermo_style custom step temp f_5[2] v_displacement
-thermo_modify temp new
-# ---------------- Thermo & Output ----------------
-thermo          100
-dump            myDump all atom 100 dump.atom
-run 300000
+variable y equal "110.1-0.1*step*dt"
+
+fix 5 all indent 10.0 sphere ${xmid} v_y ${zmid} 20 units box
+#fix 11 all move linear 0.0 -0.0002 0.0 units box # downward in y
+
+# --- Output variables ---
+variable fx equal f_5[1] 
+variable fy equal f_5[2] 
+variable fz equal f_5[3] 
+variable step1 equal "step*dt" 
+variable displacement equal "(110.1 - v_y)" # penetration depth in Å 
+
+# ---------------- Thermo & Output ---------------- 
+thermo 100 
+thermo_style custom step temp v_fy v_displacement ke etotal press 
+thermo_modify lost warn 
+fix def1 all print 100 "${step1} ${fx} ${fy} ${fz} ${displacement}" file Indentation_log.txt screen no 
+dump myDump all atom 100 dump.atom 
+
+# ---------------- Run Indentation ---------------- 
 run 300000
