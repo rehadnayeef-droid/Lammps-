@@ -1,0 +1,56 @@
+#
+# GEOMETRY ONLY: SUBSTRATE + SPHERE
+# ===============================
+
+units metal
+dimension 3
+boundary p p p
+atom_style atomic
+
+
+# -------------------------------
+region box block 0 60 0 60 0 41 units box
+create_box 4 box   # 1: Al, 2: Cu, 3: Mg, 4: C
+
+# Masses
+mass 1 26.98153860   # Al
+mass 2 63.54600000   # Cu
+mass 3 24.30500000   # Mg
+mass 4 12.01100000   # C (diamond tip)
+
+# -------------------------------
+# Substrate (Al + 2%Cu + 2%Mg)
+# -------------------------------
+lattice fcc 4.05 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region substrate block INF INF INF INF INF 25 units box
+create_atoms 1 region substrate
+group substrate region substrate 
+
+# Random substitution for alloying
+set group substrate type/fraction 2 0.2 12345  # 2% Cu
+set group substrate type/fraction 3 0.2 67892  # 2% Mg
+# Diamond Indenter (rigid) sphere
+# -------------------------------
+lattice diamond 3.567
+region indenter block 0 60 0 60 26 41 units box
+create_atoms 4 region indenter
+group tip type 4
+# Spherical tip selection
+# Sphere center: x=21.402, y=21.402, z=28.536
+# Radius: 25 Å
+# -------------------------------
+region tip_sphere sphere 45 15 41 15 units box
+group tip_sphere region tip_sphere
+# Keep only atoms inside sphere
+group tip_out subtract tip tip_sphere
+delete_atoms group tip_out
+
+region Diamond_tip block INF INF INF INF 26 27 units box
+group indenter_tip region Diamond_tip
+delete_atoms group indenter_tip
+# -------------------------------
+#
+# Dump geometry only
+# -------------------------------
+dump geom all custom 1 geom_substrate_sphere.lmp id type x y z
+run 0
